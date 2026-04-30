@@ -20,7 +20,7 @@ MAIN_IV = base64.b64decode('Nm95WkRyMjJFM3ljaGpNJQ==')
 RELEASEVERSION = "OB53"
 USERAGENT = "Dalvik/2.1.0 (Linux; U; Android 13; CPH2095 Build/RKQ1.211119.001)"
 SUPPORTED_REGIONS = {"IND", "BR", "US", "SAC", "NA", "SG", "RU", "ID", "TW", "VN", "TH", "ME", "PK", "CIS", "BD", "EUROPE"}
-DEFAULT_REGION = "BD"
+DEFAULT_REGION = "BD"  # ডিফল্ট রিজিয়ন
 
 # === Flask App Setup ===
 app = Flask(__name__)
@@ -89,6 +89,11 @@ async def initialize_tokens():
     tasks = [create_jwt(r) for r in SUPPORTED_REGIONS]
     await asyncio.gather(*tasks)
 
+async def refresh_tokens_periodically():
+    while True:
+        await asyncio.sleep(25200)
+        await initialize_tokens()
+
 async def get_token_info(region: str) -> Tuple[str,str,str]:
     info = cached_tokens.get(region)
     if info and time.time() < info['expires_at']:
@@ -131,11 +136,12 @@ def cached_endpoint(ttl=300):
 @cached_endpoint()
 def get_account_info():
     uid = request.args.get('uid')
-    region = request.args.get('region', DEFAULT_REGION)
+    region = request.args.get('region', DEFAULT_REGION)  # region না দিলে ডিফল্ট "IND" নিবে
     
     if not uid:
         return jsonify({"error": "Please provide UID."}), 400
     
+    # region ভ্যালিড কিনা চেক করুন (অপশনাল)
     if region.upper() not in SUPPORTED_REGIONS:
         return jsonify({"error": f"Unsupported region: {region}. Supported regions: {', '.join(SUPPORTED_REGIONS)}"}), 400
     
@@ -154,10 +160,13 @@ def refresh_tokens_endpoint():
     except Exception as e:
         return jsonify({'error': f'Refresh failed: {e}'}),500
 
-# ========== Vercel এর জন্য শুধু এই পরিবর্তন ==========
-# Vercel handler
-handler = app
+# === Startup ===
+async def startup():
+    await initialize_tokens()
+    asyncio.create_task(refresh_tokens_periodically())
 
-# লোকাল রানের জন্য (আপনি চাইলেই রাখতে পারেন)
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+# Vercel handler
+app = app
+
+if __name__ == "__main__":
+    app.run()
