@@ -52,11 +52,11 @@ async def json_to_proto(json_data: str, proto_message: Message) -> bytes:
 def get_account_credentials(region: str) -> str:
     r = region.upper()
     if r == "IND":
-        return "uid=4363983977&password=ISHITA_0AFN5_BY_SPIDEERIO_GAMING_UY12H"
+        return "uid=3933356115&password=CA6DDAEE7F32A95D6BC17B15B8D5C59E091338B4609F25A1728720E8E4C107C4"
     elif r in {"BR", "US", "SAC", "NA"}:
-        return "uid=4682784982&password=GHOST_TNVW1_RIZER_QTFT0"
+        return "uid=4044223479&password=EB067625F1E2CB705C7561747A46D502480DC5D41497F4C90F3FDBC73B8082ED"
     else:
-        return "uid=4418979127&password=RIZER_K4CY1_RIZER_WNX02"
+        return "uid=4575100543&password=TORIKUL_TORIKUL_N7V92"
 
 # === Token Generation ===
 
@@ -133,11 +133,87 @@ def cached_endpoint(ttl=300):
         return wrapper
     return decorator
 
-# === Flask Routes ===
+@app.route('/')
+def home():
+    return """
+    <html>
+    <head>
+        <title>MAHIR Free Fire API</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                background: #0f172a;
+                color: #e2e8f0;
+                text-align: center;
+                padding: 40px;
+            }
+            h1 {
+                color: #38bdf8;
+            }
+            .box {
+                background: #1e293b;
+                padding: 20px;
+                margin: 20px auto;
+                border-radius: 12px;
+                width: 80%;
+                max-width: 600px;
+                box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            }
+            a {
+                color: #22c55e;
+                text-decoration: none;
+                font-weight: bold;
+            }
+            code {
+                display: block;
+                background: #020617;
+                padding: 10px;
+                border-radius: 8px;
+                margin-top: 10px;
+                color: #facc15;
+            }
+        </style>
+    </head>
+    <body>
 
-@app.route('/player-info')
+        <h1>🔥 MAHIR Free Fire API</h1>
+        <p>Welcome! নিচে API ব্যবহার করার নিয়ম দেওয়া আছে 👇</p>
+
+        <div class="box">
+            <h2>📌 Get Player Bio (Signature)</h2>
+            <p>শুধু signature বের করতে এই endpoint use করো:</p>
+            <code>/bio-info?uid=123456789</code>
+            <p><a href="/bio-info?uid=123456789">👉 Test Bio API</a></p>
+        </div>
+
+        <div class="box">
+            <h2>📌 Get Full Player Info</h2>
+            <p>পুরা player data পেতে:</p>
+            <code>/player-info?uid=123456789</code>
+            <p><a href="/player-info?uid=123456789">👉 Test Player Info</a></p>
+        </div>
+
+        <div class="box">
+            <h2>🔄 Refresh Tokens</h2>
+            <p>সব region এর token refresh করতে:</p>
+            <code>/refresh</code>
+            <p><a href="/refresh">👉 Refresh Now</a></p>
+        </div>
+
+        <div class="box">
+            <h2>⚡ Developer</h2>
+            <p>Created by <b>MAHIR</b></p>
+        </div>
+
+    </body>
+    </html>
+    """
+
+# === Endpoint: /bio-info (returns only signature) ===
+
+@app.route('/bio-info')
 @cached_endpoint()
-def get_account_info():
+def get_bio_info():
     uid = request.args.get('uid')
     if not uid:
         return jsonify({"error": "Please provide UID."}), 400
@@ -146,10 +222,40 @@ def get_account_info():
     if uid in uid_region_cache:
         try:
             return_data = asyncio.run(GetAccountInformation(uid, "7", uid_region_cache[uid], "/GetPlayerPersonalShow"))
+            # সঠিক ফিল্ড নাম: socialInfo (camelCase)
+            signature = return_data.get("socialInfo", {}).get("signature", "")
+            return jsonify({"signature": signature}), 200
+        except:
+            pass  # fallback to testing all regions
+
+    for region in SUPPORTED_REGIONS:
+        try:
+            return_data = asyncio.run(GetAccountInformation(uid, "7", region, "/GetPlayerPersonalShow"))
+            uid_region_cache[uid] = region
+            # সঠিক ফিল্ড নাম: socialInfo (camelCase)
+            signature = return_data.get("socialInfo", {}).get("signature", "")
+            return jsonify({"signature": signature}), 200
+        except:
+            continue
+
+    return jsonify({"error": "UID not found in any region."}), 404
+
+# === Original Endpoint (kept for reference) ===
+
+@app.route('/player-info')
+@cached_endpoint()
+def get_account_info():
+    uid = request.args.get('uid')
+    if not uid:
+        return jsonify({"error": "Please provide UID."}), 400
+
+    if uid in uid_region_cache:
+        try:
+            return_data = asyncio.run(GetAccountInformation(uid, "7", uid_region_cache[uid], "/GetPlayerPersonalShow"))
             formatted_json = json.dumps(return_data, indent=2, ensure_ascii=False)
             return formatted_json, 200, {'Content-Type': 'application/json; charset=utf-8'}
         except:
-            pass  # fallback to testing all regions
+            pass
 
     for region in SUPPORTED_REGIONS:
         try:
