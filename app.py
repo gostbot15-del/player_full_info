@@ -15,20 +15,23 @@ from Crypto.Cipher import AES
 import base64
 
 # === Settings ===
+
 MAIN_KEY = base64.b64decode('WWcmdGMlREV1aDYlWmNeOA==')
 MAIN_IV = base64.b64decode('Nm95WkRyMjJFM3ljaGpNJQ==')
 RELEASEVERSION = "OB53"
 USERAGENT = "Dalvik/2.1.0 (Linux; U; Android 13; CPH2095 Build/RKQ1.211119.001)"
 SUPPORTED_REGIONS = {"IND", "BR", "US", "SAC", "NA", "SG", "RU", "ID", "TW", "VN", "TH", "ME", "PK", "CIS", "BD", "EUROPE"}
-DEFAULT_REGION = "BD"  # ডিফল্ট রিজিয়ন
 
 # === Flask App Setup ===
+
 app = Flask(__name__)
 CORS(app)
 cache = TTLCache(maxsize=100, ttl=300)
 cached_tokens = defaultdict(dict)
+uid_region_cache = {}
 
 # === Helper Functions ===
+
 def pad(text: bytes) -> bytes:
     padding_length = AES.block_size - (len(text) % AES.block_size)
     return text + bytes([padding_length] * padding_length)
@@ -48,14 +51,15 @@ async def json_to_proto(json_data: str, proto_message: Message) -> bytes:
 
 def get_account_credentials(region: str) -> str:
     r = region.upper()
-    if r == "ME":
-        return "uid=3301239795&password=DD40EE772FCBD61409BB15033E3DE1B1C54EDA83B75DF0CDD24C34C7C8798475"
+    if r == "IND":
+        return "uid=4363983977&password=ISHITA_0AFN5_BY_SPIDEERIO_GAMING_UY12H"
     elif r in {"BR", "US", "SAC", "NA"}:
-        return "uid=3301387397&password=BAC03CCF677F8772473A09870B6228ADFBC1F503BF59C8D05746DE451AD67128"
+        return "uid=4682784982&password=GHOST_TNVW1_RIZER_QTFT0"
     else:
-        return "uid=3301239795&password=DD40EE772FCBD61409BB15033E3DE1B1C54EDA83B75DF0CDD24C34C7C8798475"
+        return "uid=4418979127&password=RIZER_K4CY1_RIZER_WNX02"
 
 # === Token Generation ===
+
 async def get_access_token(account: str):
     url = "https://ffmconnect.live.gop.garenanow.com/oauth/guest/token/grant"
     payload = account + "&response_type=token&client_type=2&client_secret=2ee44819e9b4598845141067b281621874d0d5d7af9d8f7e00c1e54715b7d1e3&client_id=100067"
@@ -103,9 +107,6 @@ async def get_token_info(region: str) -> Tuple[str,str,str]:
     return info['token'], info['region'], info['server_url']
 
 async def GetAccountInformation(uid, unk, region, endpoint):
-    region = region.upper()
-    if region not in SUPPORTED_REGIONS:
-        raise ValueError(f"Unsupported region: {region}")
     payload = await json_to_proto(json.dumps({'a': uid, 'b': unk}), main_pb2.GetPlayerPersonalShow())
     data_enc = aes_cbc_encrypt(MAIN_KEY, MAIN_IV, payload)
     token, lock, server = await get_token_info(region)
@@ -118,6 +119,7 @@ async def GetAccountInformation(uid, unk, region, endpoint):
         return json.loads(json_format.MessageToJson(decode_protobuf(resp.content, AccountPersonalShow_pb2.AccountPersonalShowInfo)))
 
 # === Caching Decorator ===
+
 def cached_endpoint(ttl=300):
     def decorator(fn):
         @wraps(fn)
@@ -132,25 +134,33 @@ def cached_endpoint(ttl=300):
     return decorator
 
 # === Flask Routes ===
-@app.route('/info')
+
+@app.route('/player-info')
 @cached_endpoint()
 def get_account_info():
     uid = request.args.get('uid')
-    region = request.args.get('region', DEFAULT_REGION)  # region না দিলে ডিফল্ট "IND" নিবে
-    
     if not uid:
         return jsonify({"error": "Please provide UID."}), 400
-    
-    # region ভ্যালিড কিনা চেক করুন (অপশনাল)
-    if region.upper() not in SUPPORTED_REGIONS:
-        return jsonify({"error": f"Unsupported region: {region}. Supported regions: {', '.join(SUPPORTED_REGIONS)}"}), 400
-    
-    try:
-        return_data = asyncio.run(GetAccountInformation(uid, "10", region, "/GetPlayerPersonalShow"))
-        formatted_json = json.dumps(return_data, indent=2, ensure_ascii=False)
-        return formatted_json, 200, {'Content-Type': 'application/json; charset=utf-8'}
-    except Exception as e:
-        return jsonify({"error": "Invalid UID. Please check and try again."}), 500
+
+    # Check cached region for UID
+    if uid in uid_region_cache:
+        try:
+            return_data = asyncio.run(GetAccountInformation(uid, "7", uid_region_cache[uid], "/GetPlayerPersonalShow"))
+            formatted_json = json.dumps(return_data, indent=2, ensure_ascii=False)
+            return formatted_json, 200, {'Content-Type': 'application/json; charset=utf-8'}
+        except:
+            pass  # fallback to testing all regions
+
+    for region in SUPPORTED_REGIONS:
+        try:
+            return_data = asyncio.run(GetAccountInformation(uid, "7", region, "/GetPlayerPersonalShow"))
+            uid_region_cache[uid] = region
+            formatted_json = json.dumps(return_data, indent=2, ensure_ascii=False)
+            return formatted_json, 200, {'Content-Type': 'application/json; charset=utf-8'}
+        except:
+            continue
+
+    return jsonify({"error": "UID not found in any region."}), 404
 
 @app.route('/refresh', methods=['GET','POST'])
 def refresh_tokens_endpoint():
@@ -161,12 +171,11 @@ def refresh_tokens_endpoint():
         return jsonify({'error': f'Refresh failed: {e}'}),500
 
 # === Startup ===
+
 async def startup():
     await initialize_tokens()
     asyncio.create_task(refresh_tokens_periodically())
 
-# Vercel handler
-app = app
-
-if __name__ == "__main__":
-    app.run()
+if __name__ == '__main__':
+    asyncio.run(startup())
+    app.run(host='0.0.0.0', port=5000, debug=True)
